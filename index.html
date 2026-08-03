@@ -116,7 +116,7 @@ body::after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse
 .hex-ref{position:absolute;top:5px;left:8px;font-size:18px;color:var(--dim);letter-spacing:.12em;}
 .hex-ref-br{position:absolute;bottom:5px;right:8px;font-size:12px;color:var(--dim);letter-spacing:.1em;}
 
-.status-zone{padding:7px 10px;border-bottom:2px solid var(--orange);flex-shrink:0;}
+.status-zone{padding:7px 7px;border-bottom:2px solid var(--orange);flex-shrink:0;}
 .sz-lbl{font-size:8px;letter-spacing:.2em;color:var(--dim);margin-bottom:4px;}
 .status-disp{background:#081E30;border:1px solid #154060;padding:5px 9px;display:flex;justify-content:space-between;align-items:center;position:relative;overflow:hidden;}
 .status-disp > *{position:relative;z-index:1;}
@@ -129,6 +129,26 @@ body::after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse
 .ic.on{color:var(--amber);}
 .ic-s{font-size:13px;margin-right:4px;}
 .ic.on .ic-s{color:var(--amber);}
+
+/* ——— NOW PLAYING ——— */
+.np-zone{display:flex;align-items:center;gap:14px;padding:7px 7px;border-bottom:2px solid var(--orange);flex-shrink:0;background:var(--panel);}
+.np-art-wrap{position:relative;width:88px;height:88px;flex-shrink:0;border:1px solid var(--dim);background:var(--faint);overflow:hidden;}
+.np-art-wrap img{width:100%;height:100%;object-fit:cover;display:block;}
+.np-art-ph{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-family:'VT323',monospace;font-size:36px;color:var(--dim);}
+.np-eq{position:absolute;left:2px;bottom:2px;display:flex;align-items:flex-end;gap:1px;height:12px;opacity:0;transition:opacity .2s;}
+.np-eq.on{opacity:1;}
+.np-eq span{display:block;width:4px;background:var(--amber);animation:npbar 1s ease-in-out infinite;}
+.np-eq span:nth-child(1){animation-delay:-0.9s;}
+.np-eq span:nth-child(2){animation-delay:-0.4s;}
+.np-eq span:nth-child(3){animation-delay:-0.6s;}
+@keyframes npbar{0%,100%{height:4px;}50%{height:13px;}}
+.np-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:0;}
+.np-lbl{font-size:12px;letter-spacing:.2em;color:var(--dim);display:flex;align-items:center;gap:5px;}
+.np-lbl .npdot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--dim);flex-shrink:0;}
+.np-lbl.live .npdot{background:var(--red);animation:blink 1.4s ease-in-out infinite;}
+.np-lbl.live{color:var(--amber);}
+.np-track{font-size:18px;color:var(--amber2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:7px;}
+.np-artist{font-size:16px;color:var(--dim);letter-spacing:.05em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;}
 
 .bars-zone{padding:7px 10px;flex-shrink:0;}
 .br-row{display:flex;align-items:center;margin-bottom:4px;gap:5px;}
@@ -401,7 +421,6 @@ body::after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse
         </div>
 
         <div class="status-zone">
-          <div class="sz-lbl">STATUS</div>
           <div class="status-disp">
             <canvas id="ecg-canvas"></canvas>
             <div>
@@ -416,11 +435,17 @@ body::after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse
           </div>
         </div>
 
-        <div class="icon-grid">
-          <div class="ic on"><span class="ic-s">◉</span>VISION</div>
-          <div class="ic"><span class="ic-s">✦</span>MOTION</div>
-          <div class="ic"><span class="ic-s">⊕</span>SPEICH.</div>
-          <div class="ic on"><span class="ic-s">▣</span>KOMM.</div>
+        <div class="np-zone">
+          <div class="np-art-wrap">
+            <div class="np-art-ph" id="np-art-ph">♪</div>
+            <img id="np-art-img" style="display:none" alt="cover">
+            <div class="np-eq" id="np-eq"><span></span><span></span><span></span></div>
+          </div>
+          <div class="np-info">
+            <div class="np-lbl" id="np-lbl"><span class="npdot"></span><span id="np-lbl-text">CONNECTING...</span></div>
+            <div class="np-track" id="np-track">—</div>
+            <div class="np-artist" id="np-artist">—</div>
+          </div>
         </div>
 
         <div class="bars-zone">
@@ -653,6 +678,80 @@ setInterval(()=>{
     requestAnimationFrame(draw);
   }
   draw();
+})();
+
+/* ——— LAST.FM NOW PLAYING ——— */
+(function(){
+  const LASTFM_USER = "I_MYSORKA_I";
+  const LASTFM_KEY  = "aef2fcb60934b8da01d3e2d9f6573de3";
+  const POLL_MS = 20000;
+
+  const elLblText = document.getElementById('np-lbl-text');
+  const elLbl     = document.getElementById('np-lbl');
+  const elTrack   = document.getElementById('np-track');
+  const elArtist  = document.getElementById('np-artist');
+  const elArtImg  = document.getElementById('np-art-img');
+  const elArtPh   = document.getElementById('np-art-ph');
+  const elEq      = document.getElementById('np-eq');
+
+  function timeAgo(unixSec){
+    const diff = Math.floor(Date.now()/1000 - unixSec);
+    if(diff < 60) return 'JUST NOW';
+    if(diff < 3600) return Math.floor(diff/60)+'M AGO';
+    if(diff < 86400) return Math.floor(diff/3600)+'H AGO';
+    return Math.floor(diff/86400)+'D AGO';
+  }
+
+  async function fetchNowPlaying(){
+    try{
+      const url = `https://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks&user=${encodeURIComponent(LASTFM_USER)}&api_key=${LASTFM_KEY}&format=json&limit=1`;
+      const res = await fetch(url);
+      if(!res.ok) throw new Error('bad response');
+      const data = await res.json();
+      const track = data?.recenttracks?.track?.[0];
+      if(!track){
+        elLblText.textContent = 'NO DATA';
+        elLbl.classList.remove('live');
+        return;
+      }
+
+      const isPlaying = track['@attr']?.nowplaying === 'true';
+      const title = track.name || 'UNKNOWN';
+      const artist = track.artist?.['#text'] || 'UNKNOWN';
+      const img = track.image?.find(i => i.size === 'extralarge')?.['#text']
+               || track.image?.[track.image.length-1]?.['#text'];
+
+      elTrack.textContent = title;
+      elArtist.textContent = artist;
+
+      if(isPlaying){
+        elLbl.classList.add('live');
+        elLblText.textContent = 'NOW PLAYING';
+        elEq.classList.add('on');
+      } else {
+        elLbl.classList.remove('live');
+        const ts = track.date?.uts;
+        elLblText.textContent = ts ? 'LAST PLAYED // ' + timeAgo(parseInt(ts,10)) : 'LAST PLAYED';
+        elEq.classList.remove('on');
+      }
+
+      if(img){
+        elArtImg.src = img;
+        elArtImg.style.display = 'block';
+        elArtPh.style.display = 'none';
+      } else {
+        elArtImg.style.display = 'none';
+        elArtPh.style.display = 'flex';
+      }
+    } catch(e){
+      elLblText.textContent = 'OFFLINE';
+      elLbl.classList.remove('live');
+      elEq.classList.remove('on');
+    }
+  }
+
+  fetchNowPlaying();
+  setInterval(fetchNowPlaying, POLL_MS);
 })();
 </script>
 </body>
