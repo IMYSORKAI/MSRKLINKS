@@ -24,6 +24,12 @@
   --btn-bg: #110F05;
   --btn-ac: #1E1800;
   --scan:   rgba(0,0,0,0.22);
+
+  /* ——— MOOD / STATUS (переопределяются через JS applyMood()) ——— */
+  --status-bg:     #081E30;
+  --status-border: #154060;
+  --status-main:   #60D0FF;
+  --status-sub:    #1A5070;
 }
 html,body{ height:100%; background:var(--bg); color:var(--amber); font-family:'Share Tech Mono',monospace; overflow:hidden; }
 
@@ -118,11 +124,11 @@ body::after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse
 
 .status-zone{padding:7px 7px;border-bottom:2px solid var(--orange);flex-shrink:0;}
 .sz-lbl{font-size:8px;letter-spacing:.2em;color:var(--dim);margin-bottom:4px;}
-.status-disp{background:#081E30;border:1px solid #154060;padding:5px 9px;display:flex;justify-content:space-between;align-items:center;position:relative;overflow:hidden;}
+.status-disp{background:var(--status-bg);border:1px solid var(--status-border);padding:5px 9px;display:flex;justify-content:space-between;align-items:center;position:relative;overflow:hidden;transition:background .6s ease,border-color .6s ease;}
 .status-disp > *{position:relative;z-index:1;}
 #ecg-canvas{position:absolute;inset:0;width:95%;height:100%;z-index:0;opacity:0.55;}
-.sd-main{font-family:'VT323',monospace;font-size:32px;letter-spacing:.1em;color:#60D0FF;}
-.sd-sub{font-size:12px;color:#1A5070;letter-spacing:.07em;}
+.sd-main{font-family:'VT323',monospace;font-size:32px;letter-spacing:.1em;color:var(--status-main);transition:color .6s ease;}
+.sd-sub{font-size:12px;color:var(--status-sub);letter-spacing:.07em;transition:color .6s ease;}
 
 .icon-grid{display:grid;grid-template-columns:repeat(2,1fr);border-bottom:2px solid var(--orange);flex-shrink:0;}
 .ic{border:1px solid var(--faint);padding:0 8px;min-height:32px;display:flex;align-items:center;justify-content:center;font-size:12px;letter-spacing:.1em;color:var(--dim);}
@@ -424,13 +430,13 @@ body::after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse
           <div class="status-disp">
             <canvas id="ecg-canvas"></canvas>
             <div>
-              <div class="sd-main">NORMA</div>
-              <div class="sd-sub">+ 品 &nbsp; EINHEIT STABIL</div>
+              <div class="sd-main" id="sd-main">NORMA</div>
+              <div class="sd-sub" id="sd-sub">+ 品 &nbsp; EINHEIT STABIL</div>
             </div>
               <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
-              <rect x="1" y="1" width="24" height="24" stroke="#154060" stroke-width="1"/>
-              <line x1="1" y1="1" x2="25" y2="25" stroke="#154060" stroke-width="1"/>
-              <line x1="25" y1="1" x2="1" y2="25" stroke="#154060" stroke-width="1"/>
+              <rect x="1" y="1" width="24" height="24" stroke="var(--status-border)" stroke-width="1"/>
+              <line x1="1" y1="1" x2="25" y2="25" stroke="var(--status-border)" stroke-width="1"/>
+              <line x1="25" y1="1" x2="1" y2="25" stroke="var(--status-border)" stroke-width="1"/>
             </svg>
           </div>
         </div>
@@ -475,6 +481,10 @@ body::after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse
   </div>
 
 </div>
+
+<!-- Firebase (Realtime Database) — для дистанционного переключения настроения -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
 <script>
 function pad(n){return String(n).padStart(2,'0');}
@@ -561,7 +571,7 @@ function frame(){
 frame();
 
 /* bars */
-const bars=[{id:'bar1',vid:'bv1',v:33},{id:'bar2',vid:'bv2',v:88},{id:'bar3',vid:'bv3',v:55},{id:'bar4',vid:'bv4',v:72}];
+const bars=[{id:'bar1',vid:'bv1',v:33},{id:'bar2',vid:'bv2',v:79},{id:'bar3',vid:'bv3',v:55},{id:'bar4',vid:'bv4',v:94}];
 setTimeout(()=>bars.forEach(b=>{
   document.getElementById(b.id).style.width=b.v+'%';
   document.getElementById(b.vid).textContent=b.v;
@@ -581,6 +591,12 @@ setInterval(()=>{
     setTimeout(()=>f.style.transform='',85);
   }
 },2800);
+
+/* глобальные параметры пульса — меняются через applyMood(), читаются в draw() */
+let SPEED=0.85;         // px за кадр — скорость движения линии (частота пульса)
+let CYCLE_PX=195;       // ширина одного удара в px — меньше = чаще удары
+let AMP=1.0;            // амплитуда всплеска: >1 резче, <1 слабее/спокойнее
+let ECG_COLOR='96,208,255'; // rgb-триплет цвета линии/свечения (без rgba())
 
 /* ECG pulse background — scrolling buffer, no wrap jump */
 (function(){
@@ -614,19 +630,21 @@ setInterval(()=>{
 
   function ecgSample(t){
     const tt=((t%1)+1)%1;
+    let raw=0.5;
     for(let i=0;i<cycle.length-1;i++){
       if(tt>=cycle[i][0]&&tt<=cycle[i+1][0]){
         const s=(tt-cycle[i][0])/(cycle[i+1][0]-cycle[i][0]);
-        return cycle[i][1]+s*(cycle[i+1][1]-cycle[i][1]);
+        raw=cycle[i][1]+s*(cycle[i+1][1]-cycle[i][1]);
+        break;
       }
     }
-    return 0.5;
+    // AMP растягивает/сплющивает отклонение от средней линии (0.5) —
+    // так меняется "резкость" формы пульса под настроение
+    return 0.5+(raw-0.5)*AMP;
   }
 
-  const SPEED=0.7;       // px advanced per frame (fractional)
-  const CYCLE_PX=220;    // width of one heartbeat cycle in pixels
-  const BLANK=28;        // dark gap behind the drawing head
-  let phase=0;           // position within cycle in pixels
+  const BLANK=28;         // dark gap behind the drawing head
+  let phase=0;            // position within cycle in pixels
 
   function draw(){
     const W=canvas.width, H=canvas.height;
@@ -653,13 +671,13 @@ setInterval(()=>{
     }
 
     const grad=ctx.createLinearGradient(0,0,drawTo,0);
-    grad.addColorStop(0,'rgba(96,208,255,0)');
-    grad.addColorStop(0.35,'rgba(96,208,255,0.15)');
-    grad.addColorStop(0.75,'rgba(96,208,255,0.55)');
-    grad.addColorStop(1,'rgba(96,208,255,1)');
+    grad.addColorStop(0,`rgba(${ECG_COLOR},0)`);
+    grad.addColorStop(0.35,`rgba(${ECG_COLOR},0.15)`);
+    grad.addColorStop(0.75,`rgba(${ECG_COLOR},0.55)`);
+    grad.addColorStop(1,`rgba(${ECG_COLOR},1)`);
     ctx.strokeStyle=grad;
     ctx.lineWidth=1.6;
-    ctx.shadowColor='#60D0FF';
+    ctx.shadowColor=`rgb(${ECG_COLOR})`;
     ctx.shadowBlur=5;
     ctx.stroke();
     ctx.shadowBlur=0;
@@ -669,8 +687,8 @@ setInterval(()=>{
     const hy=buf[drawTo];
     ctx.beginPath();
     ctx.arc(hx,hy,2.8,0,Math.PI*2);
-    ctx.fillStyle='rgba(140,230,255,0.95)';
-    ctx.shadowColor='#60D0FF';
+    ctx.fillStyle=`rgba(${ECG_COLOR},0.95)`;
+    ctx.shadowColor=`rgb(${ECG_COLOR})`;
     ctx.shadowBlur=12;
     ctx.fill();
     ctx.shadowBlur=0;
@@ -679,6 +697,101 @@ setInterval(()=>{
   }
   draw();
 })();
+
+/* ——— MOOD TRACKER ——————————————————————————————————————————————
+   Здесь описаны все настроения. Чтобы добавить новое — просто скопируй
+   один блок и поменяй значения. Что за что отвечает:
+
+   label     — текст вместо "NORMA"
+   sub       — текст вместо "EINHEIT STABIL"
+   bg        — фон плашки статуса
+   border    — цвет рамки плашки
+   main      — цвет текста label (и общий "акцентный" цвет)
+   sub_c     — цвет текста sub
+   ecg       — цвет линии пульса, ТРИ числа r,g,b без rgba()
+   speed     — скорость движения линии (px/кадр). Больше = чаще удары
+   cyclePx   — ширина одного удара в px. Меньше = чаще удары
+               (speed и cyclePx вместе задают итоговый "пульс")
+   amp       — резкость всплеска: 1 = как в оригинале,
+               <1 = сглаженный/слабый пульс, >1 = острый/агрессивный
+------------------------------------------------------------------ */
+const MOODS = {
+  normal: {
+    label:'NORMA', sub:'+ 品 &nbsp; EINHEIT STABIL',
+    bg:'#081E30', border:'#154060', main:'#60D0FF', sub_c:'#1A5070',
+    ecg:'96,208,255',
+    speed:0.85, cyclePx:195, amp:1.0
+  },
+  despair: {
+    label:'DESPAIR', sub:'- 病 &nbsp; EINHEIT UNSTABIL',
+    bg:'#141414', border:'#3a3a3a', main:'#c9c9c9', sub_c:'#5f5f5f',
+    ecg:'176,176,176',
+    speed:0.2, cyclePx:150, amp:0.0   // очень медленный, плоский пульс
+  },
+  rage: {
+    label:'RAGE', sub:'+ 品 &nbsp; EINHEIT STABIL',
+    bg:'#210404', border:'#7a0000', main:'#ff3b3b', sub_c:'#7a1414',
+    ecg:'255,45,45',
+    speed:2.3, cyclePx:120, amp:1.4     // очень быстрый, резкий пульс
+  },
+  joyful: {
+    label:'JOYFULL', sub:'+ 品 &nbsp; EINHEIT STABIL',
+    bg:'#03210b', border:'#0e6b28', main:'#39ff7a', sub_c:'#157a35',
+    ecg:'57,255,122',
+    speed:1.05, cyclePx:175, amp:1.05   // чуть быстрее нормы, бодрый
+  }
+};
+
+function applyMood(key){
+  const m = MOODS[key] || MOODS.normal;
+  const root = document.documentElement.style;
+  root.setProperty('--status-bg', m.bg);
+  root.setProperty('--status-border', m.border);
+  root.setProperty('--status-main', m.main);
+  root.setProperty('--status-sub', m.sub_c);
+
+  const elMain=document.getElementById('sd-main');
+  const elSub=document.getElementById('sd-sub');
+  if(elMain) elMain.innerHTML=m.label;
+  if(elSub)  elSub.innerHTML=m.sub;
+
+  // переменные ECG-канваса объявлены через let в блоке выше — просто перезаписываем
+  SPEED=m.speed;
+  CYCLE_PX=m.cyclePx;
+  AMP=m.amp;
+  ECG_COLOR=m.ecg;
+}
+
+/* ——— FIREBASE: слушаем текущее настроение в реальном времени ———
+   1) Вставь сюда свой firebaseConfig из консоли Firebase
+      (Project settings → General → Your apps → Web app).
+   2) В Realtime Database должен быть узел "mood" со строкой-ключом
+      одного из: "normal" | "despair" | "rage" | "joyful".
+   3) Меняется этот узел со страницы control.html (см. отдельный файл). */
+const firebaseConfig = {
+    apiKey: "AIzaSyB_TFv2gzLXMToJtxkcrl4cLdKWYvIGH2w",
+    authDomain: "imoodtrackeri.firebaseapp.com",
+    databaseURL: "https://imoodtrackeri-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "imoodtrackeri",
+    storageBucket: "imoodtrackeri.firebasestorage.app",
+    messagingSenderId: "574089531404",
+    appId: "1:574089531404:web:3ed1d086427ff6b849de29"
+};
+
+try{
+  firebase.initializeApp(firebaseConfig);
+  const moodRef = firebase.database().ref('mood');
+  moodRef.on('value', snap=>{
+    const key = snap.val();
+    applyMood(key && MOODS[key] ? key : 'normal');
+  }, err=>{
+    console.warn('Firebase mood listener error, использую NORMA по умолчанию', err);
+    applyMood('normal');
+  });
+}catch(e){
+  console.warn('Firebase не настроен — использую NORMA по умолчанию', e);
+  applyMood('normal');
+}
 
 /* ——— LAST.FM NOW PLAYING ——— */
 (function(){
