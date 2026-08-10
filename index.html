@@ -742,27 +742,39 @@ const MOODS = {
   },
   sad: {
     label:'SAD', sub:'+ 品 &nbsp; EINHEIT STABIL',
-    bg:'#0E074E', border:'#2814DE', main:'#1742FF', sub_c:'#1742FF',
+    bg:'#08042B', border:'#2814DE', main:'#1742FF', sub_c:'#1132BF',
     ecg:'23,66,225',
     speed:0.7, cyclePx:195, amp:1.0   
   },
   loving: {
     label:'LOVING', sub:'+ 品 &nbsp; EINHEIT STABIL',
-    bg:'#460737', border:'#970F75', main:'#C9149C', sub_c:'#C9149C',
+    bg:'#460737', border:'#970F75', main:'#C9149C', sub_c:'#A61180',
     ecg:'201,20,156',
     speed:1.05, cyclePx:175, amp:1.05   
   },
   anxiety: {
     label:'ANXIETY', sub:'+ 品 &nbsp; EINHEIT STABIL',
-    bg:'#614E00', border:'#B38F00', main:'#FFCB00', sub_c:'#FFCB00',
-    ecg:'255,203,0',
+    bg:'#1C0001', border:'#610F0F', main:'#940005', sub_c:'#6F0004',
+    ecg:'163,0,6',
     speed:1.5, cyclePx:175, amp:1.05   
   },
   flow: {
     label:'FLOW', sub:'+ 品 &nbsp; EINHEIT HYPER STABIL',
-    bg:'#000000', border:'#333333', main:'#E8E8E8', sub_c:'#E8E8E8',
+    bg:'#000000', border:'#333333', main:'#E8E8E8', sub_c:'#B8B8B8',
     ecg:'232,232,232',
     speed:1.0, cyclePx:195, amp:1.05   
+  },
+  tired: {
+    label:'TIRED', sub:'+ 品 &nbsp; EINHEIT STABIL',
+    bg:'#2E2500', border:'#B38F00', main:'#FFCB00', sub_c:'#B08C00',
+    ecg:'255,203,0',
+    speed:0.85, cyclePx:195, amp:1.0   
+  },
+  exhausted: {
+    label:'EXHAUSTED', sub:'+ 品 &nbsp; EINHEIT STABIL',
+    bg:'#170F00', border:'#583D0E', main:'#855D18', sub_c:'#644612',
+    ecg:'161,115,32',
+    speed:0.7, cyclePx:195, amp:1.0
   },
 };
 
@@ -881,7 +893,7 @@ try{
         elArtPh.style.display = 'flex';
       }
     } catch(e){
-      elLblText.textContent = 'OFFLINE';
+      elLblText.textContent = 'TURN ON VPN';
       elLbl.classList.remove('live');
       elEq.classList.remove('on');
     }
